@@ -21,9 +21,12 @@ export const SWIGGY_ORDER_CARD_CSS = {
   totalAmount: '_1H0ME',
 } as const;
 
+/** Swiggy past-orders page (entry URL, auto-redirect target, manual retry). */
+export const SWIGGY_ORDER_HISTORY_URL = 'https://www.swiggy.com/my-account/orders';
+
 /** Initial URL for the in-app WebView — desktop order/account surfaces where possible. */
 export const EMBEDDED_BROWSER_ENTRY_URL: Record<PlatformId, string> = {
-  swiggy: 'https://www.swiggy.com/my-account/orders',
+  swiggy: SWIGGY_ORDER_HISTORY_URL,
   zomato: 'https://www.zomato.com/users',
   makemytrip: 'https://www.makemytrip.com/mytrips',
 };
@@ -150,7 +153,7 @@ function looksLikeSwiggyUiMerchantJunk(line: string): boolean {
 
 export function getPlatformTip(platform: PlatformId): string {
   if (platform === 'swiggy') {
-    return 'Sign in if asked. Past orders load from my-account/orders (desktop-style page). Then extract.';
+    return 'Open Past orders if you can, then Extract. Stuck? Tap “Fresh load orders” or “Paste orders” below.';
   }
   if (platform === 'zomato') {
     return 'Sign in if asked. Open Your orders from profile, then extract.';
@@ -238,16 +241,25 @@ function getCategory(platform: PlatformId): Transaction['category'] {
   return 'other';
 }
 
-export function buildTransactions(platform: PlatformId, lines: string[]): Transaction[] {
+export function buildTransactions(
+  platform: PlatformId,
+  lines: string[],
+  opts?: { swiggyMerchantStrict?: boolean }
+): Transaction[] {
   const category = getCategory(platform);
   const results: Transaction[] = [];
   const hints = PLATFORM_HINTS[platform].map((hint) => hint.toLowerCase());
+  const swiggyStrict =
+    platform === 'swiggy' ? opts?.swiggyMerchantStrict !== false : undefined;
 
   for (let i = 0; i < lines.length; i += 1) {
     const currentLine = lines[i] ?? '';
     const previousLine = lines[i - 1] ?? '';
     const nextLine = lines[i + 1] ?? '';
-    const merchantCandidates = extractMerchants(currentLine, platform === 'swiggy' ? { swiggyStrict: true } : undefined);
+    const merchantCandidates = extractMerchants(
+      currentLine,
+      platform === 'swiggy' ? { swiggyStrict: Boolean(swiggyStrict) } : undefined
+    );
     const currentLineAmounts = extractCurrency(currentLine);
     const nextLineAmounts = extractCurrency(nextLine);
     const amount = currentLineAmounts[0] ?? nextLineAmounts[0] ?? null;
@@ -277,6 +289,20 @@ export function buildTransactions(platform: PlatformId, lines: string[]): Transa
   );
 }
 
+/** Parse pasted email / SMS / copied screen text when WebView extraction fails. */
+export function buildTransactionsFromPastedText(platform: PlatformId, raw: string): Transaction[] {
+  const lines = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const strict = buildTransactions(platform, lines);
+  if (strict.length > 0) return strict;
+  if (platform === 'swiggy') {
+    return buildTransactions(platform, lines, { swiggyMerchantStrict: false });
+  }
+  return [];
+}
+
 export function dedupeTransactions(items: Transaction[]): Transaction[] {
   const map = new Map<string, Transaction>();
   items.forEach((item) => {
@@ -288,33 +314,141 @@ export function dedupeTransactions(items: Transaction[]): Transaction[] {
   return Array.from(map.values());
 }
 
-/** Scroll Swiggy order list to load virtualized rows, then RN injects scraper. */
+/**
+ * On Swiggy past-orders URL only: click "Show more" a few times (no redirects — avoids reload loops).
+ */
+export function getSwiggyOrdersExpandOnlyScript(): string {
+  return `
+(function () {
+  try {
+    var h = (location.hostname || '').toLowerCase();
+    if (h.indexOf('swiggy.com') === -1) return;
+    var p = (location.pathname || '').toLowerCase();
+    if (p.indexOf('/my-account/orders') === -1) return;
+
+    function findShowMoreBtn() {
+      var candidates = document.querySelectorAll('button, a, [role="button"], span, div');
+      var i, el, t;
+      for (i = 0; i < candidates.length; i++) {
+        el = candidates[i];
+        if (!el) continue;
+        t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+        if (t.indexOf('show more') !== -1 && (t.indexOf('order') !== -1 || t.indexOf('past') !== -1)) {
+          return el;
+        }
+      }
+      for (i = 0; i < candidates.length; i++) {
+        el = candidates[i];
+        if (!el) continue;
+        t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+        if (t.indexOf('show more order') !== -1 || t === 'show more') return el;
+      }
+      return null;
+    }
+
+    function clickShowMoreRounds(left, delayMs) {
+      if (left <= 0) return;
+      var btn = findShowMoreBtn();
+      if (btn) {
+        try {
+          btn.click();
+        } catch (e1) {
+          try {
+            var ev = document.createEvent('MouseEvents');
+            ev.initEvent('click', true, true);
+            btn.dispatchEvent(ev);
+          } catch (e2) {}
+        }
+      }
+      setTimeout(function () {
+        clickShowMoreRounds(left - 1, delayMs);
+      }, delayMs);
+    }
+
+    setTimeout(function () {
+      clickShowMoreRounds(3, 1300);
+    }, 450);
+  } catch (e) {}
+})();
+true;
+`;
+}
+
+/** Expand "Show more orders", scroll to load virtualized rows, then RN injects scraper. */
 export function getSwiggyPrefetchScrollScript(): string {
   return `
     (function () {
-      var lastHeight = 0;
-      var stable = 0;
-      var attempts = 0;
-      function tick() {
-        window.scrollTo(0, document.documentElement.scrollHeight);
-        attempts++;
-        var h = document.documentElement.scrollHeight;
-        if (h === lastHeight) {
-          stable++;
-        } else {
-          stable = 0;
-          lastHeight = h;
+      function findShowMoreBtn() {
+        var candidates = document.querySelectorAll('button, a, [role="button"], span, div');
+        var i, el, t;
+        for (i = 0; i < candidates.length; i++) {
+          el = candidates[i];
+          if (!el) continue;
+          t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+          if (t.indexOf('show more') !== -1 && (t.indexOf('order') !== -1 || t.indexOf('past') !== -1)) {
+            return el;
+          }
         }
-        if (stable >= 2 || attempts > 40) {
-          window.scrollTo(0, 0);
-          setTimeout(function () {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'swiggy_prefetch_scroll_done' }));
-          }, 450);
+        for (i = 0; i < candidates.length; i++) {
+          el = candidates[i];
+          if (!el) continue;
+          t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+          if (t.indexOf('show more order') !== -1 || t === 'show more') return el;
+        }
+        return null;
+      }
+
+      function runShowMoreThenScroll(roundsLeft) {
+        if (roundsLeft <= 0) {
+          startScrollPhase();
           return;
         }
-        setTimeout(tick, 280);
+        var btn = findShowMoreBtn();
+        if (btn) {
+          try {
+            btn.click();
+          } catch (e1) {
+            try {
+              var ev = document.createEvent('MouseEvents');
+              ev.initEvent('click', true, true);
+              btn.dispatchEvent(ev);
+            } catch (e2) {}
+          }
+        }
+        setTimeout(function () {
+          runShowMoreThenScroll(roundsLeft - 1);
+        }, 1300);
       }
-      tick();
+
+      function startScrollPhase() {
+        var lastHeight = 0;
+        var stable = 0;
+        var attempts = 0;
+        function tick() {
+          window.scrollTo(0, document.documentElement.scrollHeight);
+          attempts++;
+          var h = document.documentElement.scrollHeight;
+          if (h === lastHeight) {
+            stable++;
+          } else {
+            stable = 0;
+            lastHeight = h;
+          }
+          if (stable >= 2 || attempts > 40) {
+            window.scrollTo(0, 0);
+            setTimeout(function () {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'swiggy_prefetch_scroll_done' }));
+            }, 450);
+            return;
+          }
+          setTimeout(tick, 280);
+        }
+        tick();
+      }
+
+      setTimeout(function () {
+        runShowMoreThenScroll(3);
+      }, 400);
     })();
     true;
   `;

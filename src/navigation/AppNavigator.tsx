@@ -6,6 +6,7 @@ import { BrowserScreen } from '../screens/BrowserScreen';
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { PlatformConnectScreen } from '../screens/PlatformConnectScreen';
+import { PasteTransactionsScreen } from '../screens/PasteTransactionsScreen';
 import { ReviewTransactionsScreen } from '../screens/ReviewTransactionsScreen';
 import { RootStackParamList } from '../types';
 
@@ -32,7 +33,12 @@ function MainNavigator() {
         component={PlatformConnectScreen}
         options={{ title: 'Connect' }}
       />
-      <Stack.Screen name="Browser" component={BrowserScreen} options={{ title: 'Embedded Browser' }} />
+      <Stack.Screen name="Browser" component={BrowserScreen} options={{ title: 'Pehchan Browser' }} />
+      <Stack.Screen
+        name="PasteTransactions"
+        component={PasteTransactionsScreen}
+        options={{ title: 'Paste orders' }}
+      />
       <Stack.Screen
         name="ReviewTransactions"
         component={ReviewTransactionsScreen}

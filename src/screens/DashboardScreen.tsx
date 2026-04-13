@@ -1,4 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useMemo } from 'react';
 import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LineChart, PieChart } from 'react-native-chart-kit';
 
@@ -15,9 +16,9 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
-const windowWidth = Dimensions.get('window').width;
-/** Chart kit can misbehave with tiny widths (first layout / foldables). */
-const chartWidth = Math.max(280, windowWidth > 0 ? windowWidth - 32 : 320);
+const { width: windowWidth } = Dimensions.get('window');
+/** Fixed stable width for charts to prevent layout-triggered re-render loops */
+const CHART_WIDTH = windowWidth - 32;
 
 const chartConfig = {
   backgroundGradientFrom: '#FFFFFF',
@@ -35,10 +36,13 @@ const chartConfig = {
 export function DashboardScreen({ navigation }: Props) {
   const { user, transactions, logout } = useAppContext();
 
-  const foodSpending = getTotalFoodSpending(transactions);
-  const travelSpending = getTravelSpending(transactions);
-  const monthly = getMonthlySpending(transactions);
-  const categoryBreakdown = getCategoryBreakdown(transactions);
+  // Memoize calculations to prevent unnecessary re-renders
+  const stats = useMemo(() => ({
+    foodSpending: getTotalFoodSpending(transactions),
+    travelSpending: getTravelSpending(transactions),
+    monthly: getMonthlySpending(transactions),
+    categoryBreakdown: getCategoryBreakdown(transactions)
+  }), [transactions]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -52,8 +56,8 @@ export function DashboardScreen({ navigation }: Props) {
         </Pressable>
       </View>
 
-      <DashboardCard title="Total Food Spending" value={`₹ ${foodSpending.toFixed(0)}`} />
-      <DashboardCard title="Travel Spending" value={`₹ ${travelSpending.toFixed(0)}`} />
+      <DashboardCard title="Total Food Spending" value={`₹ ${stats.foodSpending.toFixed(0)}`} />
+      <DashboardCard title="Travel Spending" value={`₹ ${stats.travelSpending.toFixed(0)}`} />
       <DashboardCard title="Number of Transactions" value={`${transactions.length}`} />
 
       <Pressable style={styles.connectBtn} onPress={() => navigation.navigate('PlatformConnect')}>
@@ -61,15 +65,15 @@ export function DashboardScreen({ navigation }: Props) {
       </Pressable>
 
       <ChartContainer title="Monthly spending">
-        {monthly.length === 0 ? (
+        {stats.monthly.length === 0 ? (
           <Text style={styles.emptyText}>No transactions available for chart.</Text>
         ) : (
           <LineChart
             data={{
-              labels: monthly.map((item) => item.label),
-              datasets: [{ data: monthly.map((item) => item.value) }],
+              labels: stats.monthly.map((item) => item.label),
+              datasets: [{ data: stats.monthly.map((item) => item.value) }],
             }}
-            width={chartWidth}
+            width={CHART_WIDTH}
             height={220}
             chartConfig={chartConfig}
             bezier
@@ -79,18 +83,18 @@ export function DashboardScreen({ navigation }: Props) {
       </ChartContainer>
 
       <ChartContainer title="Category breakdown">
-        {categoryBreakdown.length === 0 ? (
+        {stats.categoryBreakdown.length === 0 ? (
           <Text style={styles.emptyText}>No category data to display.</Text>
         ) : (
           <PieChart
-            data={categoryBreakdown.map((item) => ({
+            data={stats.categoryBreakdown.map((item) => ({
               name: item.name,
               population: item.amount,
               color: item.color,
               legendFontColor: item.legendFontColor,
               legendFontSize: item.legendFontSize,
             }))}
-            width={chartWidth}
+            width={CHART_WIDTH}
             height={220}
             chartConfig={chartConfig}
             accessor="population"

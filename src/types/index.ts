@@ -19,5 +19,6 @@ export type RootStackParamList = {
   Dashboard: undefined;
   PlatformConnect: undefined;
   Browser: { platform: PlatformId };
+  PasteTransactions: { platform: PlatformId };
   ReviewTransactions: { platform: PlatformId };
 };
