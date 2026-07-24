@@ -8,6 +8,8 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { PlatformConnectScreen } from '../screens/PlatformConnectScreen';
 import { PasteTransactionsScreen } from '../screens/PasteTransactionsScreen';
 import { ReviewTransactionsScreen } from '../screens/ReviewTransactionsScreen';
+import { SwiggyAutoLoginScreen } from '../screens/SwiggyAutoLoginScreen';
+import { SwiggyAnalyticsScreen } from '../screens/SwiggyAnalyticsScreen';
 import { RootStackParamList } from '../types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -43,6 +45,16 @@ function MainNavigator() {
         name="ReviewTransactions"
         component={ReviewTransactionsScreen}
         options={{ title: 'Review Transactions' }}
+      />
+      <Stack.Screen
+        name="SwiggyAutoLogin"
+        component={SwiggyAutoLoginScreen}
+        options={{ title: 'Connecting Swiggy…' }}
+      />
+      <Stack.Screen
+        name="SwiggyAnalytics"
+        component={SwiggyAnalyticsScreen}
+        options={{ title: 'Swiggy Analytics' }}
       />
     </Stack.Navigator>
   );

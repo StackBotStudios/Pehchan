@@ -1,14 +1,17 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, TextStyle, ViewStyle } from 'react-native';
 
 interface PlatformButtonProps {
   label: string;
   onPress: () => void;
+  onLongPress?: () => void;
+  style?: ViewStyle;
+  labelStyle?: TextStyle;
 }
 
-export function PlatformButton({ label, onPress }: PlatformButtonProps) {
+export function PlatformButton({ label, onPress, onLongPress, style, labelStyle }: PlatformButtonProps) {
   return (
-    <Pressable style={styles.button} onPress={onPress}>
-      <Text style={styles.text}>{label}</Text>
+    <Pressable style={[styles.button, style]} onPress={onPress} onLongPress={onLongPress}>
+      <Text style={[styles.text, labelStyle]}>{label}</Text>
     </Pressable>
   );
 }
