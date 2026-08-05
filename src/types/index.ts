@@ -5,6 +5,44 @@ export interface UserSession {
   isLoggedIn: boolean;
 }
 
+export interface SwiggyCredentials {
+  mobile: string;
+}
+
+export interface SwiggyOrderItem {
+  name: string;
+  quantity: number;
+  price: number;
+}
+
+export interface SwiggyOrderCharges {
+  itemTotal: number;
+  deliveryFee: number;
+  packagingFee: number;
+  platformFee: number;
+  taxes: number;
+  discount: number;
+  couponDiscount: number;
+  extraDiscount: number;
+  paidAmount: number;
+}
+
+export interface SwiggyOrder {
+  orderId: string;
+  restaurantName: string;
+  restaurantCuisine?: string;
+  restaurantArea?: string;
+  orderDate: string;
+  orderTotal: number;
+  items: SwiggyOrderItem[];
+  status: string;
+  paymentMethod?: string;
+  charges?: SwiggyOrderCharges;
+  deliveryAddress?: string;
+  deliveryPartner?: string;
+  couponCode?: string;
+}
+
 export interface Transaction {
   id: string;
   platform: PlatformId;
@@ -21,4 +59,6 @@ export type RootStackParamList = {
   Browser: { platform: PlatformId };
   PasteTransactions: { platform: PlatformId };
   ReviewTransactions: { platform: PlatformId };
+  SwiggyAutoLogin: undefined;
+  SwiggyAnalytics: undefined;
 };
